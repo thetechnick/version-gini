@@ -6,6 +6,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
+// Represents a Semantic Version v2.
 type SemanticVersion struct {
 	*semver.Version
 }
@@ -47,6 +48,7 @@ func (sv *SemanticVersion) Less(v Version) bool {
 	return sv.Version.LessThan(otherSV.Version)
 }
 
+// Sequence version is just an increasing number.
 type SequenceVersion int
 
 var (
