@@ -1,5 +1,7 @@
 package main
 
+import "encoding/json"
+
 type Project struct {
 	Name     string
 	Versions []ProjectVersion
@@ -44,8 +46,12 @@ type Constraint struct {
 	version  Version
 }
 
-func (c Constraint) String() string {
+func (c *Constraint) String() string {
 	return string(c.operator) + c.version.String()
+}
+
+func (c *Constraint) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
 }
 
 func NewConstraint(op Operator, v Version) *Constraint {

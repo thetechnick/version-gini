@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -23,11 +24,14 @@ type Resolver struct {
 
 type ResolverProjectVersion struct {
 	Name    string
-	Version Version
+	Version string
 }
 
 func (rpv ResolverProjectVersion) String() string {
-	return rpv.Name + "=" + rpv.Version.String()
+	if len(rpv.Version) == 0 {
+		return rpv.Name
+	}
+	return rpv.Name + "=" + rpv.Version
 }
 
 // Records constraints for the resolver and their source.
@@ -98,13 +102,35 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 			lit := z.Var(i).Pos()
 			r.projectVersionsToLiterals[ResolverProjectVersion{
 				Name:    projectName,
-				Version: pv.Version,
+				Version: pv.Version.String(),
 			}] = lit
-			// build first constraint clause
 			// we want at least one version of each project
 			r.gini.Add(lit)
 		}
-		r.gini.Add(0)
+		r.gini.Add(z.LitNull)
+
+		// We want at MOST one version of each project
+		for _, pv := range project.Versions {
+			rPV := ResolverProjectVersion{
+				Name:    projectName,
+				Version: pv.Version.String(),
+			}
+			pvLit := r.projectVersionsToLiterals[rPV]
+			for _, otherPV := range project.Versions {
+				otherRPV := ResolverProjectVersion{
+					Name:    projectName,
+					Version: otherPV.Version.String(),
+				}
+				if rPV == otherRPV {
+					// We don't want to exclude ourselves!
+					continue
+				}
+				otherPVLit := r.projectVersionsToLiterals[otherRPV]
+				r.gini.Add(pvLit.Not())
+				r.gini.Add(otherPVLit.Not())
+				r.gini.Add(z.LitNull)
+			}
+		}
 	}
 
 	// 3.
@@ -121,26 +147,51 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 					// matches -> unconstrained!
 					continue
 				}
-				r.gini.Add(srcLit.Not())
+				if constraint.Origin.Name != "root" {
+					r.gini.Add(srcLit.Not())
+				}
 				r.gini.Add(r.projectVersionsToLiterals[ResolverProjectVersion{
 					Name:    projectName,
-					Version: pv.Version,
+					Version: pv.Version.String(),
 				}].Not())
 				r.gini.Add(0)
 			}
 		}
 	}
 
+	r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
+		Name:    "P0",
+		Version: "1.2.0",
+	}])
+
+	fmt.Println(r.projectVersionsToLiterals)
+	r.gini.Write(os.Stdout)
+
+	// Shortcut, is there any combination that works?
+	// if r.gini.Solve() != 1 {
+	// 	return fmt.Errorf("nosat!")
+	// }
+
+	// Walk through versions,
+	// selecting the latest version that can be SAT.
+
+	// var lockedIn []
+
+	// r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
+	// 	Name:    "P0",
+	// 	Version: "1.2.0",
+	// }])
+
+	var resolved []ResolverProjectVersion
 	if r.gini.Solve() != 1 {
 		return fmt.Errorf("nosat")
 	}
-
 	for pv, lit := range r.projectVersionsToLiterals {
 		if r.gini.Value(lit) {
-			r.resolved = append(r.resolved, pv)
+			resolved = append(resolved, pv)
 		}
 	}
-
+	r.resolved = resolved
 	return nil
 }
 
@@ -156,12 +207,16 @@ func (r *Resolver) walkProjectConstraints(
 			}
 
 			if len(dep.Constraints) != 0 {
+				var v string
+				if pv.Version != nil {
+					v = pv.Version.String()
+				}
 				r.projectConstraints[dep.Name] = append(
 					r.projectConstraints[dep.Name],
 					ResolverConstraint{
 						Origin: ResolverProjectVersion{
 							Name:    project.Name,
-							Version: pv.Version,
+							Version: v,
 						},
 						SubjectProjectName: dep.Name,
 						Constraints:        dep.Constraints,

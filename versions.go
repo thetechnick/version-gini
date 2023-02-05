@@ -15,7 +15,7 @@ var (
 	_ Version = (*SemanticVersion)(nil)
 )
 
-func MustSemanticVersion(v string) Version {
+func MustSemanticVersion(v string) *SemanticVersion {
 	sv, err := NewSemanticVersion(v)
 	if err != nil {
 		panic(err)
@@ -23,7 +23,7 @@ func MustSemanticVersion(v string) Version {
 	return sv
 }
 
-func NewSemanticVersion(v string) (Version, error) {
+func NewSemanticVersion(v string) (*SemanticVersion, error) {
 	sv, err := semver.NewVersion(v)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ var (
 	_ Version = SequenceVersion(0)
 )
 
-func MustSequenceVersion(v string) Version {
+func MustSequenceVersion(v string) SequenceVersion {
 	sv, err := NewSequenceVersion(v)
 	if err != nil {
 		panic(err)
@@ -63,10 +63,10 @@ func MustSequenceVersion(v string) Version {
 	return sv
 }
 
-func NewSequenceVersion(v string) (Version, error) {
+func NewSequenceVersion(v string) (SequenceVersion, error) {
 	s, err := strconv.Atoi(v)
 	if err != nil {
-		return nil, err
+		return SequenceVersion(0), err
 	}
 
 	return SequenceVersion(s), nil
