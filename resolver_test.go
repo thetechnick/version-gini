@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolver(t *testing.T) {
-	t.SkipNow()
-	projectA := Project{
+var (
+	projectA = Project{
 		Name: "A",
 		Versions: []ProjectVersion{
 			{
@@ -33,11 +32,35 @@ func TestResolver(t *testing.T) {
 					}},
 				},
 			},
+			{
+				Version: MustSemanticVersion("1.0.0"),
+				Dependencies: []Dependency{
+					{Name: "C", Constraints: []Constraint{
+						*NewConstraint(Equal, MustSemanticVersion("2.0.0")),
+					}},
+				},
+			},
+			{
+				Version: MustSemanticVersion("0.9.0"),
+				Dependencies: []Dependency{
+					{Name: "C", Constraints: []Constraint{
+						*NewConstraint(Equal, MustSemanticVersion("2.0.0")),
+					}},
+				},
+			},
 		},
 	}
-	projectB := Project{
+	projectB = Project{
 		Name: "B",
 		Versions: []ProjectVersion{
+			{
+				Version: MustSemanticVersion("1.1.0"),
+				Dependencies: []Dependency{
+					{Name: "C", Constraints: []Constraint{
+						*NewConstraint(Equal, MustSemanticVersion("2.0.0")),
+					}},
+				},
+			},
 			{
 				Version: MustSemanticVersion("1.0.0"),
 				Dependencies: []Dependency{
@@ -48,7 +71,7 @@ func TestResolver(t *testing.T) {
 			},
 		},
 	}
-	projectC := Project{
+	projectC = Project{
 		Name: "C",
 		Versions: []ProjectVersion{
 			{
@@ -59,6 +82,10 @@ func TestResolver(t *testing.T) {
 			},
 		},
 	}
+)
+
+func TestResolver(t *testing.T) {
+	t.SkipNow()
 
 	db := NewInMemoryDB()
 	ctx := context.Background()
@@ -134,7 +161,8 @@ func generateProjectDBEntries(projectNumber, projectVersions int) []Project {
 }
 
 func TestXxx(t *testing.T) {
-	projects := generateProjectDBEntries(1, 3)
+	// projects := generateProjectDBEntries(2, 2)
+	projects := []Project{projectA, projectB, projectC}
 
 	ctx := context.Background()
 	db := NewInMemoryDB()
@@ -147,14 +175,21 @@ func TestXxx(t *testing.T) {
 
 	r := NewResolver(db)
 	result, err := r.Resolve(ctx, []Dependency{
-		{Name: "P0", Constraints: []Constraint{
-			// *NewConstraint(Equal, MustSemanticVersion("v1.0.0")),
-		}},
+		{Name: "A"}, {Name: "B"},
+		// {Name: "P0", Constraints: []Constraint{
+		// 	// *NewConstraint(Equal, MustSemanticVersion("v1.0.0")),
+		// }},
 	})
 	require.NoError(t, err)
 
 	sort.Sort(ResolverProjectVersionByName(result))
 	fmt.Println(result)
+
+	assert.Equal(t, []ResolverProjectVersion{
+		{Name: "A", Version: "1.1.0"},
+		{Name: "B", Version: "1.1.0"},
+		{Name: "C", Version: "2.0.0"},
+	}, result)
 
 	t.Fail()
 }

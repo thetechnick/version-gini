@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -18,6 +17,7 @@ type Resolver struct {
 	resolveOnce               sync.Once
 	resolved                  []ResolverProjectVersion
 	gini                      *gini.Gini
+	projects                  []Project
 	projectConstraints        map[string][]ResolverConstraint
 	projectVersionsToLiterals map[ResolverProjectVersion]z.Lit
 }
@@ -91,15 +91,13 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 
 	// 2.
 	// Assign each project version a literal for the SAT solver.
-	var i int
 	for projectName := range r.projectConstraints {
 		project, err := r.db.Get(ctx, projectName)
 		if err != nil {
 			return err
 		}
 		for _, pv := range project.Versions {
-			i++
-			lit := z.Var(i).Pos()
+			lit := r.gini.Lit()
 			r.projectVersionsToLiterals[ResolverProjectVersion{
 				Name:    projectName,
 				Version: pv.Version.String(),
@@ -159,33 +157,65 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 		}
 	}
 
-	r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
-		Name:    "P0",
-		Version: "1.2.0",
-	}])
-
-	fmt.Println(r.projectVersionsToLiterals)
-	r.gini.Write(os.Stdout)
+	fmt.Println("lits: ", r.projectVersionsToLiterals)
+	fmt.Println("constraints: ", r.projectConstraints)
+	// r.gini.Write(os.Stdout)
 
 	// Shortcut, is there any combination that works?
-	// if r.gini.Solve() != 1 {
-	// 	return fmt.Errorf("nosat!")
-	// }
+	if r.gini.Solve() != 1 {
+		return fmt.Errorf("nosat!")
+	}
 
-	// Walk through versions,
-	// selecting the latest version that can be SAT.
+	// selectedProjectVersion := map[string]Version{}
+	selectedProjectVersion := map[string]Version{}
+	var (
+		projectIndex        int
+		projectVersionIndex int
+	)
 
-	// var lockedIn []
+tryAgain:
+	fmt.Println()
 
-	// r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
-	// 	Name:    "P0",
-	// 	Version: "1.2.0",
-	// }])
+	// select version to try:
+	if projectIndex >= len(r.projects) {
+		return fmt.Errorf("NOSAT! out of projects!")
+	}
+	project := r.projects[projectIndex]
+	if _, ok := selectedProjectVersion[project.Name]; !ok {
+		if projectVersionIndex >= len(project.Versions) {
+			return fmt.Errorf("NOSAT! out of versions for %s", project.Name)
+		}
+
+		selectedProjectVersion[project.Name] = project.Versions[projectVersionIndex].Version
+	}
+
+	fmt.Println("projects: ", r.projects)
+	fmt.Println("selected: ", selectedProjectVersion)
+	for projectName, version := range selectedProjectVersion {
+		r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
+			Name:    projectName,
+			Version: version.String(),
+		}])
+	}
+
+	if r.gini.Solve() != 1 {
+		// select next version where conflict
+		fmt.Println("didn't work:", project.Name)
+		delete(selectedProjectVersion, project.Name)
+		projectVersionIndex++
+		goto tryAgain
+	}
+
+	// do we have a solution for all projects?
+	if len(selectedProjectVersion) != len(r.projects) {
+		// add next project
+		fmt.Println("have not found latest for all projects")
+		projectIndex++
+		projectVersionIndex = 0
+		goto tryAgain
+	}
 
 	var resolved []ResolverProjectVersion
-	if r.gini.Solve() != 1 {
-		return fmt.Errorf("nosat")
-	}
 	for pv, lit := range r.projectVersionsToLiterals {
 		if r.gini.Value(lit) {
 			resolved = append(resolved, pv)
@@ -199,11 +229,18 @@ func (r *Resolver) walkProjectConstraints(
 	ctx context.Context,
 	project Project,
 ) error {
+
 	for _, pv := range project.Versions {
 		for _, dep := range pv.Dependencies {
+			depProject, err := r.db.Get(ctx, dep.Name)
+			if err != nil {
+				return err
+			}
+
 			if _, ok := r.projectConstraints[dep.Name]; !ok {
 				// ensure key is present, even if unconstrained.
 				r.projectConstraints[dep.Name] = nil
+				r.projects = append(r.projects, depProject)
 			}
 
 			if len(dep.Constraints) != 0 {
@@ -224,10 +261,6 @@ func (r *Resolver) walkProjectConstraints(
 				)
 			}
 
-			depProject, err := r.db.Get(ctx, dep.Name)
-			if err != nil {
-				return err
-			}
 			if err := r.walkProjectConstraints(
 				ctx, depProject); err != nil {
 				return err
