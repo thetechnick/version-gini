@@ -241,7 +241,6 @@ func benchmarkResolveN(p, v int, b *testing.B) {
 		}
 	}
 
-	// run the Fib function b.N times
 	for n := 0; n < b.N; n++ {
 		r := NewResolver(db)
 		_, err := r.Resolve(ctx, []Dependency{
