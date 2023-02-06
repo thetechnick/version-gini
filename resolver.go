@@ -157,8 +157,8 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 		}
 	}
 
-	fmt.Println("lits: ", r.projectVersionsToLiterals)
-	fmt.Println("constraints: ", r.projectConstraints)
+	// fmt.Println("lits: ", r.projectVersionsToLiterals)
+	// fmt.Println("constraints: ", r.projectConstraints)
 	// r.gini.Write(os.Stdout)
 
 	// Shortcut, is there any combination that works?
@@ -173,8 +173,10 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 		projectVersionIndex int
 	)
 
+	// Find _latest_ version of all components that still satisfy the model, by
+	// starting with the latest version of each project and testing older and older versions.
 tryAgain:
-	fmt.Println()
+	// fmt.Println()
 
 	// select version to try:
 	if projectIndex >= len(r.projects) {
@@ -189,8 +191,8 @@ tryAgain:
 		selectedProjectVersion[project.Name] = project.Versions[projectVersionIndex].Version
 	}
 
-	fmt.Println("projects: ", r.projects)
-	fmt.Println("selected: ", selectedProjectVersion)
+	// fmt.Println("projects: ", r.projects)
+	// fmt.Println("selected: ", selectedProjectVersion)
 	for projectName, version := range selectedProjectVersion {
 		r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
 			Name:    projectName,
@@ -200,7 +202,7 @@ tryAgain:
 
 	if r.gini.Solve() != 1 {
 		// select next version where conflict
-		fmt.Println("didn't work:", project.Name)
+		// fmt.Println("didn't work:", project.Name)
 		delete(selectedProjectVersion, project.Name)
 		projectVersionIndex++
 		goto tryAgain
@@ -209,7 +211,7 @@ tryAgain:
 	// do we have a solution for all projects?
 	if len(selectedProjectVersion) != len(r.projects) {
 		// add next project
-		fmt.Println("have not found latest for all projects")
+		// fmt.Println("have not found latest for all projects")
 		projectIndex++
 		projectVersionIndex = 0
 		goto tryAgain
