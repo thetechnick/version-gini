@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConstraint(t *testing.T) {
@@ -58,4 +59,22 @@ func TestConstraint(t *testing.T) {
 				test.result, c.Matches(test.versionTest))
 		})
 	}
+}
+
+func TestParseConstraint(t *testing.T) {
+	c, err := ParseConstraint(">v1.2.3", ParseSemanticVersion)
+	require.NoError(t, err)
+
+	assert.Equal(t, Greater, c.operator)
+	assert.Equal(t, "1.2.3", c.version.String())
+}
+
+func TestParseConstraint_unknownOp(t *testing.T) {
+	_, err := ParseConstraint("()v1.2.3", ParseSemanticVersion)
+	require.EqualError(t, err, "unknown op")
+}
+
+func TestParseConstraint_parserError(t *testing.T) {
+	_, err := ParseConstraint("=vxxx", ParseSemanticVersion)
+	require.EqualError(t, err, "Invalid Semantic Version")
 }

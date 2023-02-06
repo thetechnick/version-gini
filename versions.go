@@ -6,6 +6,12 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
+type Version interface {
+	Equal(v Version) bool
+	Less(v Version) bool
+	String() string
+}
+
 // Represents a Semantic Version v2.
 type SemanticVersion struct {
 	*semver.Version
@@ -30,6 +36,10 @@ func NewSemanticVersion(v string) (*SemanticVersion, error) {
 	}
 
 	return &SemanticVersion{Version: sv}, nil
+}
+
+func ParseSemanticVersion(v string) (Version, error) {
+	return NewSemanticVersion(v)
 }
 
 func (sv *SemanticVersion) Equal(v Version) bool {
@@ -70,6 +80,10 @@ func NewSequenceVersion(v string) (SequenceVersion, error) {
 	}
 
 	return SequenceVersion(s), nil
+}
+
+func ParseSequenceVersion(v string) (Version, error) {
+	return NewSequenceVersion(v)
 }
 
 func (sv SequenceVersion) Equal(v Version) bool {

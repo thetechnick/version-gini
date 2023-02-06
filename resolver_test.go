@@ -229,62 +229,7 @@ func generateProjectDBEntries(projectNumber, projectVersions int) []Project {
 	return projects
 }
 
-func benchmarkResolveSetupN(p, v int, b *testing.B) {
-	projects := generateProjectDBEntries(p, v)
-
-	ctx := context.Background()
-	db := NewInMemoryDB()
-	for _, p := range projects {
-		err := db.Add(ctx, p)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	// run the Fib function b.N times
-	for n := 0; n < b.N; n++ {
-		r := NewResolver(db)
-		err := r.Setup(ctx, []Dependency{
-			{Name: "P0"},
-		})
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 func benchmarkResolveN(p, v int, b *testing.B) {
-	projects := generateProjectDBEntries(p, v)
-
-	ctx := context.Background()
-	db := NewInMemoryDB()
-	for _, p := range projects {
-		err := db.Add(ctx, p)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	r := NewResolver(db)
-	err := r.Setup(ctx, []Dependency{
-		{Name: "P0"},
-	})
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	// run the Fib function b.N times
-	for n := 0; n < b.N; n++ {
-		err := r.resolve(ctx, []Dependency{
-			{Name: "P0"},
-		})
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func benchmarkSetupAndResolveN(p, v int, b *testing.B) {
 	projects := generateProjectDBEntries(p, v)
 
 	ctx := context.Background()
@@ -308,23 +253,10 @@ func benchmarkSetupAndResolveN(p, v int, b *testing.B) {
 	}
 }
 
-// func BenchmarkResolveSetup100_100(b *testing.B) { benchmarkResolveSetupN(100, 100, b) }
-// func BenchmarkResolveOnly100_100(b *testing.B)  { benchmarkResolveN(100, 100, b) }
+func BenchmarkResolve1_1(b *testing.B) { benchmarkResolveN(1, 1, b) }
 
-func BenchmarkSetupAndResolve100_100(b *testing.B) { benchmarkSetupAndResolveN(100, 100, b) }
-func BenchmarkSetupAndResolve200_200(b *testing.B) { benchmarkSetupAndResolveN(200, 200, b) }
+func BenchmarkResolve2_2(b *testing.B) { benchmarkResolveN(2, 2, b) }
 
-// func BenchmarkResolve1_1(b *testing.B)   { benchmarkResolveN(1, 1, b) }
-// func BenchmarkResolve2_2(b *testing.B)   { benchmarkResolveN(2, 2, b) }
-// func BenchmarkResolve3_3(b *testing.B)   { benchmarkResolveN(3, 3, b) }
-// func BenchmarkResolve10_10(b *testing.B) { benchmarkResolveN(10, 10, b) }
+func BenchmarkResolve3_3(b *testing.B) { benchmarkResolveN(3, 3, b) }
 
-// func BenchmarkResolve10_1(b *testing.B) { benchmarkResolveN(10, 1, b) }
-// func BenchmarkResolve10_2(b *testing.B) { benchmarkResolveN(10, 2, b) }
-// func BenchmarkResolve10_3(b *testing.B) { benchmarkResolveN(10, 3, b) }
-
-// func BenchmarkResolve1_10(b *testing.B) { benchmarkResolveN(1, 10, b) }
-// func BenchmarkResolve2_10(b *testing.B) { benchmarkResolveN(2, 10, b) }
-// func BenchmarkResolve3_10(b *testing.B) { benchmarkResolveN(3, 10, b) }
-
-// func BenchmarkResolve10_1000(b *testing.B) { benchmarkResolveN(10, 1000, b) }
+func BenchmarkResolve10_10(b *testing.B) { benchmarkResolveN(10, 10, b) }

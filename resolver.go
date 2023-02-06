@@ -67,7 +67,7 @@ func NewResolver(db ProjectDB) *Resolver {
 func (r *Resolver) Resolve(ctx context.Context, rootDeps []Dependency) ([]ResolverProjectVersion, error) {
 	var err error
 	r.resolveOnce.Do(func() {
-		err = r.Setup(ctx, rootDeps)
+		err = r.setup(ctx, rootDeps)
 		if err != nil {
 			return
 		}
@@ -80,7 +80,7 @@ func (r *Resolver) ConstrainsFor(ctx context.Context, projectName string) []Reso
 	return r.projectConstraints[projectName]
 }
 
-func (r *Resolver) Setup(ctx context.Context, rootDeps []Dependency) error {
+func (r *Resolver) setup(ctx context.Context, rootDeps []Dependency) error {
 	// 1.
 	// Discover projects and constraints that are part of the dependency tree.
 	if err := r.walkProjectConstraints(ctx,
@@ -95,32 +95,28 @@ func (r *Resolver) Setup(ctx context.Context, rootDeps []Dependency) error {
 
 	// 2.
 	// Assign each project version a literal for the SAT solver.
-	for projectName := range r.projectConstraints {
-		project, err := r.db.Get(ctx, projectName)
-		if err != nil {
-			return err
-		}
+	for _, project := range r.projects {
+		// CONSTRAINT: We want at least one version of each project
 		for _, pv := range project.Versions {
 			lit := r.gini.Lit()
 			r.projectVersionsToLiterals[ResolverProjectVersion{
-				Name:    projectName,
+				Name:    project.Name,
 				Version: pv.Version.String(),
 			}] = lit
-			// we want at least one version of each project
 			r.gini.Add(lit)
 		}
 		r.gini.Add(z.LitNull)
 
-		// We want at MOST one version of each project
+		// CONSTRAINT: We want at MOST one version of each project
 		for _, pv := range project.Versions {
 			rPV := ResolverProjectVersion{
-				Name:    projectName,
+				Name:    project.Name,
 				Version: pv.Version.String(),
 			}
 			pvLit := r.projectVersionsToLiterals[rPV]
 			for _, otherPV := range project.Versions {
 				otherRPV := ResolverProjectVersion{
-					Name:    projectName,
+					Name:    project.Name,
 					Version: otherPV.Version.String(),
 				}
 				if rPV == otherRPV {
@@ -133,42 +129,32 @@ func (r *Resolver) Setup(ctx context.Context, rootDeps []Dependency) error {
 				r.gini.Add(z.LitNull)
 			}
 		}
-	}
 
-	// 3.
-	// Apply dependency constraints
-	for projectName, constraints := range r.projectConstraints {
-		project, err := r.db.Get(ctx, projectName)
-		if err != nil {
-			return err
-		}
+		// CONSTRAINT: Process actual dependency constraints
+		constraints := r.projectConstraints[project.Name]
 		for _, constraint := range constraints {
-			srcLit := r.projectVersionsToLiterals[constraint.Origin]
 			for _, pv := range project.Versions {
 				if ConstraintAND(constraint.Constraints).Matches(pv.Version) {
 					// matches -> unconstrained!
 					continue
 				}
-				if constraint.Origin.Name != "root" {
+				srcLit := r.projectVersionsToLiterals[constraint.Origin]
+				if srcLit != 0 {
 					r.gini.Add(srcLit.Not())
 				}
 				r.gini.Add(r.projectVersionsToLiterals[ResolverProjectVersion{
-					Name:    projectName,
+					Name:    constraint.SubjectProjectName,
 					Version: pv.Version.String(),
 				}].Not())
-				r.gini.Add(0)
+				r.gini.Add(z.LitNull)
 			}
 		}
 	}
+
 	return nil
 }
 
 func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
-
-	// fmt.Println("lits: ", r.projectVersionsToLiterals)
-	// fmt.Println("constraints: ", r.projectConstraints)
-	// r.gini.Write(os.Stdout)
-
 	// Shortcut, is there any combination that works?
 	if r.gini.Solve() != 1 {
 		return fmt.Errorf("nosat!")
@@ -184,8 +170,6 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 	// Find _latest_ version of all components that still satisfy the model, by
 	// starting with the latest version of each project and testing older and older versions.
 tryAgain:
-	// fmt.Println()
-
 	// select version to try:
 	if projectIndex >= len(r.projects) {
 		return fmt.Errorf("NOSAT! out of projects!")
@@ -199,8 +183,6 @@ tryAgain:
 		selectedProjectVersion[project.Name] = project.Versions[projectVersionIndex].Version
 	}
 
-	// fmt.Println("projects: ", r.projects)
-	// fmt.Println("selected: ", selectedProjectVersion)
 	for projectName, version := range selectedProjectVersion {
 		r.gini.Assume(r.projectVersionsToLiterals[ResolverProjectVersion{
 			Name:    projectName,
@@ -209,8 +191,7 @@ tryAgain:
 	}
 
 	if r.gini.Solve() != 1 {
-		// select next version where conflict
-		// fmt.Println("didn't work:", project.Name)
+		// select next version when UNSAT
 		delete(selectedProjectVersion, project.Name)
 		projectVersionIndex++
 		goto tryAgain
@@ -219,7 +200,6 @@ tryAgain:
 	// do we have a solution for all projects?
 	if len(selectedProjectVersion) != len(r.projects) {
 		// add next project
-		// fmt.Println("have not found latest for all projects")
 		projectIndex++
 		projectVersionIndex = 0
 		goto tryAgain
