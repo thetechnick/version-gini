@@ -67,6 +67,10 @@ func NewResolver(db ProjectDB) *Resolver {
 func (r *Resolver) Resolve(ctx context.Context, rootDeps []Dependency) ([]ResolverProjectVersion, error) {
 	var err error
 	r.resolveOnce.Do(func() {
+		err = r.Setup(ctx, rootDeps)
+		if err != nil {
+			return
+		}
 		err = r.resolve(ctx, rootDeps)
 	})
 	return r.resolved, err
@@ -76,7 +80,7 @@ func (r *Resolver) ConstrainsFor(ctx context.Context, projectName string) []Reso
 	return r.projectConstraints[projectName]
 }
 
-func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
+func (r *Resolver) Setup(ctx context.Context, rootDeps []Dependency) error {
 	// 1.
 	// Discover projects and constraints that are part of the dependency tree.
 	if err := r.walkProjectConstraints(ctx,
@@ -156,6 +160,10 @@ func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 			}
 		}
 	}
+	return nil
+}
+
+func (r *Resolver) resolve(ctx context.Context, rootDeps []Dependency) error {
 
 	// fmt.Println("lits: ", r.projectVersionsToLiterals)
 	// fmt.Println("constraints: ", r.projectConstraints)
